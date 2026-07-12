@@ -1,5 +1,5 @@
 {
-  "mode": "reproduction",
+  "mode": "gpu_lab_validation",
   "model": "Qwen/Qwen2.5-0.5B-Instruct",
   "seed": 42,
   "num_chains": 24,

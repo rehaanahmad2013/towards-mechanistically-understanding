@@ -244,6 +244,23 @@ def evaluate(model, tokenizer, chains, device, scan_samples, do_scan):
     return result
 
 
+def run_toy_lab(device, signal_strength=1.5, samples=4096, seed=7):
+    """Bounded synthetic analogue used by the notebook's optional GPU lab."""
+    generator = torch.Generator(device=device).manual_seed(seed)
+    labels = torch.randint(0, 2, (samples,), generator=generator, device=device) * 2 - 1
+    source = torch.randn(samples, generator=generator, device=device) + signal_strength * labels
+    stranded = torch.randn(samples, generator=generator, device=device) + 0.10 * labels
+    shuffled = source[torch.randperm(samples, generator=generator, device=device)]
+    strengths = torch.linspace(0, 1, 11, device=device)
+    patched_accuracy, control_accuracy = [], []
+    for alpha in strengths:
+        patched_accuracy.append(((stranded + alpha * source).sign() == labels).float().mean().item())
+        control_accuracy.append(((stranded + alpha * shuffled).sign() == labels).float().mean().item())
+    return {"strengths": strengths.cpu().tolist(), "patched_accuracy": patched_accuracy,
+            "shuffled_control_accuracy": control_accuracy, "samples": samples,
+            "signal_strength": signal_strength, "seed": seed}
+
+
 def main():
     started = time.time()
     config = json.loads(Path("experiment_config.json").read_text())
@@ -251,6 +268,13 @@ def main():
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(json.dumps({"event": "environment", "device": str(device), "gpu": torch.cuda.get_device_name(0) if device.type == "cuda" else None,
                       "torch": torch.__version__, "config": config}), flush=True)
+    if config["mode"] == "gpu_lab_validation":
+        result = run_toy_lab(device)
+        result.update({"event": "final_result", "mode": config["mode"], "device": str(device),
+                       "gpu": torch.cuda.get_device_name(0) if device.type == "cuda" else None,
+                       "runtime_seconds": time.time()-started})
+        print("FINAL_RESULT=" + json.dumps(result, sort_keys=True), flush=True)
+        return
     tokenizer = AutoTokenizer.from_pretrained(config["model"], trust_remote_code=True)
     tokenizer.pad_token = tokenizer.eos_token
     model = AutoModelForCausalLM.from_pretrained(config["model"], torch_dtype=torch.bfloat16 if device.type == "cuda" else torch.float32,
