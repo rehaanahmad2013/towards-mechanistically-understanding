@@ -78,7 +78,7 @@ def _(mo, pd):
 
         We replaced the paper's 1.5B model and biomedical graph with **Qwen-2.5-0.5B** and 24 fixed synthetic chains. LoRA saw the two constituent facts but never the composed question. After 30 epochs it recalled every fact, yet answered no chain correctly.
 
-        On 12 fixed failures, an all-pairs residual-post scan moved the head-entity state between each of 24×24 layer pairs. Entity self-patching recovered **3/12 (25.0%)**, while the same oracle search at a random token recovered **1/12 (8.3%)**. Because the unpatched score is zero, a multiplicative ratio is undefined; the honest effect is **+25 percentage points**.
+        On 12 fixed failures, an all-pairs residual-post scan moved the head-entity state between each of 24×24 layer pairs. Entity self-patching recovered **3/12 (25.0%; 95% Wilson interval 8.9–53.2%)**, while the same oracle search at a random token recovered **1/12 (8.3%; 1.5–35.4%)**. Because the unpatched score is zero, a multiplicative ratio is undefined; the honest effect is **+25 percentage points**. The wide, overlapping intervals make this illustrative rather than decisive.
         """),
         mo.ui.table(reproduction, selection=None, pagination=False),
         mo.callout("Verdict: the knowing–using gap and causal recoverability are reproduced at small scale. The paper's middle-layer localization is not: our first successful pairs targeted layers 0, 2, or 3.", kind="warn"),
@@ -159,7 +159,11 @@ def _(mo, pd):
         mo.md("""
         ## 5. Limitations and provenance
 
-        Each linked immutable branch contains the runnable Python entrypoint, fixed JSON configuration, Kubernetes manifest, and evaluation method. The reproduction used 0.0759 measured GPU-hours. This was a user-owned Kubernetes cluster, so no provider price or monetary charge was exposed; dollar cost is therefore **not available**, rather than assumed to be zero.
+        - [Zero-shot control code](https://github.com/rehaanahmad2013/towards-mechanistically-understanding/tree/orx/blackwell-zero-shot-control-2) contains the runner, fixed baseline configuration, Blackwell-compatible manifest, and novelty evaluation.
+        - [Confirmatory reproduction code](https://github.com/rehaanahmad2013/towards-mechanistically-understanding/tree/orx/context-aware-entity-self-patching) contains LoRA training, the fixed synthetic mappings, full 24×24 scan, random-position control, and exact-token scorer.
+        - [Toy GPU lab validation code](https://github.com/rehaanahmad2013/towards-mechanistically-understanding/tree/orx/molab-toy-gpu-lab-validation) contains the bounded synthetic intervention and shuffled-source control used below.
+
+        The reproduction used 0.0759 measured GPU-hours. This was a user-owned Kubernetes cluster, so no provider price or monetary charge was exposed; dollar cost is therefore **not available**, rather than assumed to be zero.
 
         Major substitutions are Qwen-2.5-0.5B for 1.5B, 24 synthetic chains for 1,000 STaRK-Prime facts, 12 patch scans for 1,000 evaluations, and teacher-forced exact-token scoring for reported generated exact match. The released anonymous archive omitted its datasets, configuration files, and trained checkpoints, preventing an exact archival rerun.
         """),
