@@ -1,0 +1,12 @@
+{
+  "mode": "baseline",
+  "model": "Qwen/Qwen2.5-0.5B-Instruct",
+  "seed": 42,
+  "num_chains": 24,
+  "scan_samples": 12,
+  "epochs": 30,
+  "learning_rate": 0.0002,
+  "lora_rank": 16,
+  "lora_alpha": 32,
+  "lora_dropout": 0.05
+}
