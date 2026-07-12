@@ -185,6 +185,7 @@ def evaluate(model, tokenizer, chains, device, scan_samples, do_scan):
             examples.append({"head": chain["head"], "answer": chain["answer"], "prediction": pred})
     result = {"memorization_accuracy": sum(direct)/len(direct), "chaining_accuracy": sum(chaining)/len(chaining),
               "memorization_n": len(direct), "chaining_n": len(chaining), "examples": examples}
+    print("PRE_SCAN_RESULT=" + json.dumps(result, sort_keys=True), flush=True)
     if not do_scan:
         return result
 
@@ -198,8 +199,19 @@ def evaluate(model, tokenizer, chains, device, scan_samples, do_scan):
         full_ids = full_ids.to(device)
         cache = cache_residuals(model, full_ids, layers)
         ids = full_ids[0].tolist()
-        anchor_ids = tokenizer(chain["head"], add_special_tokens=False)["input_ids"]
-        entity_positions = find_subsequence(ids[:answer_start], anchor_ids)
+        anchor_candidates = [
+            tokenizer(chain["head"], add_special_tokens=False)["input_ids"],
+            tokenizer(" " + chain["head"], add_special_tokens=False)["input_ids"],
+        ]
+        entity_positions = None
+        for anchor_ids in anchor_candidates:
+            try:
+                entity_positions = find_subsequence(ids[:answer_start], anchor_ids)
+                break
+            except ValueError:
+                pass
+        if entity_positions is None:
+            raise ValueError(f"Context-aware anchor match failed for {chain['head']}")
         random_positions = [1]
         base_ok = token_exact_with_patch(model, full_ids, answer_start, cache[0], 0, entity_positions, layers)
         unpatched_tf += int(base_ok)
