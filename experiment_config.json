@@ -1,5 +1,5 @@
 {
-  "mode": "baseline",
+  "mode": "reproduction",
   "model": "Qwen/Qwen2.5-0.5B-Instruct",
   "seed": 42,
   "num_chains": 24,
