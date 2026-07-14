@@ -224,7 +224,7 @@ def _(mo, np, plt):
     )
     _frozen_ax.set_xticks(range(len(_validated_tokens)), [f"{i} · {token}" for i, token in enumerate(_validated_tokens)], rotation=55, ha="right")
     _frozen_ax.set_yticks([0, 4, 8, 12, 16, 20, 23])
-    _frozen_colorbar = _frozen_fig.colorbar(_frozen_image, ax=_frozen_ax, pad=0.02)
+    _frozen_colorbar = _frozen_fig.colorbar(_frozen_image, ax=_frozen_ax, fraction=0.046, pad=0.04, shrink=0.92)
     _frozen_colorbar.set_label("Relevant patch − answer-matched control (logit Δ)")
     _frozen_fig.tight_layout()
     mo.vstack([
@@ -346,7 +346,7 @@ def _(mo, np, plt, run_lab, patch_strength):
             _lab_ax.set(xlabel="Corrupted-prompt token position", ylabel="Scanned residual-post layer", title=f"Live Qwen causal heatmap (α={float(patch_strength.value):.2f})")
             _lab_ax.set_xticks(range(len(_lab_tokens)), [f"{i} · {token}" for i, token in enumerate(_lab_tokens)], rotation=55, ha="right")
             _lab_ax.set_yticks(range(len(_lab_layer_indices)), _lab_layer_indices)
-            _lab_colorbar = _lab_fig.colorbar(_lab_image, ax=_lab_ax, pad=0.02)
+            _lab_colorbar = _lab_fig.colorbar(_lab_image, ax=_lab_ax, fraction=0.046, pad=0.04, shrink=0.92)
             _lab_colorbar.set_label("Relevant patch − answer-matched control (logit Δ)")
             _lab_fig.tight_layout()
             _lab_name = torch.cuda.get_device_name(0) if _lab_device.type == "cuda" else "CPU fallback (every fourth layer)"
