@@ -249,35 +249,42 @@ def run_real_model_lab(model, tokenizer, device, patch_strength=1.0):
     """Batched layer-by-token residual patching used by the Molab GPU lab."""
     clean_prompt = "A is in Paris. Paris is in France. Therefore, A is in"
     corrupt_prompt = "A is in Berlin. Berlin is in Germany. Therefore, A is in"
+    control_prompt = "A is in Tokyo. Tokyo is in Japan. Therefore, A is in"
     clean_answer, corrupt_answer = " France", " Germany"
     clean = tokenizer(clean_prompt, return_tensors="pt").to(device)
     corrupt = tokenizer(corrupt_prompt, return_tensors="pt").to(device)
-    if clean["input_ids"].shape != corrupt["input_ids"].shape:
+    control = tokenizer(control_prompt, return_tensors="pt").to(device)
+    if not (clean["input_ids"].shape == corrupt["input_ids"].shape == control["input_ids"].shape):
         raise ValueError("The controlled prompts must have identical token lengths")
     seq_len = clean["input_ids"].shape[1]
     clean_id = tokenizer(clean_answer, add_special_tokens=False)["input_ids"][0]
     corrupt_id = tokenizer(corrupt_answer, add_special_tokens=False)["input_ids"][0]
     layers = model.model.layers
-    cache = {}
-    handles = []
-    for layer_idx, layer in enumerate(layers):
-        def save(_module, _inputs, output, layer_idx=layer_idx):
-            hidden = output[0] if isinstance(output, tuple) else output
-            cache[layer_idx] = hidden.detach().clone()
-        handles.append(layer.register_forward_hook(save))
-    try:
-        clean_logits = model(**clean, use_cache=False).logits[:, -1, :]
-    finally:
-        for handle in handles:
-            handle.remove()
+
+    def forward_with_cache(inputs):
+        cache = {}
+        handles = []
+        for layer_idx, layer in enumerate(layers):
+            def save(_module, _inputs, output, layer_idx=layer_idx):
+                hidden = output[0] if isinstance(output, tuple) else output
+                cache[layer_idx] = hidden.detach().clone()
+            handles.append(layer.register_forward_hook(save))
+        try:
+            logits = model(**inputs, use_cache=False).logits[:, -1, :]
+        finally:
+            for handle in handles:
+                handle.remove()
+        return logits, cache
+
+    clean_logits, clean_cache = forward_with_cache(clean)
+    _control_logits, control_cache = forward_with_cache(control)
     corrupt_logits = model(**corrupt, use_cache=False).logits[:, -1, :]
     clean_margin = (clean_logits[0, clean_id] - clean_logits[0, corrupt_id]).item()
     corrupt_margin = (corrupt_logits[0, clean_id] - corrupt_logits[0, corrupt_id]).item()
 
     relevant = torch.empty((len(layers), seq_len), dtype=torch.float32)
-    shuffled = torch.empty_like(relevant)
+    irrelevant = torch.empty_like(relevant)
     positions = torch.arange(seq_len, device=device)
-    source_positions = torch.roll(positions, shifts=max(1, seq_len // 2))
     for layer_idx, layer in enumerate(layers):
         batch_ids = corrupt["input_ids"].repeat(2 * seq_len, 1)
         batch_mask = corrupt["attention_mask"].repeat(2 * seq_len, 1)
@@ -285,14 +292,15 @@ def run_real_model_lab(model, tokenizer, device, patch_strength=1.0):
         def patch(_module, _inputs, output, layer_idx=layer_idx):
             hidden = output[0] if isinstance(output, tuple) else output
             patched = hidden.clone()
-            clean_state = cache[layer_idx][0].to(patched.dtype)
+            clean_state = clean_cache[layer_idx][0].to(patched.dtype)
+            control_state = control_cache[layer_idx][0].to(patched.dtype)
             rows = torch.arange(seq_len, device=patched.device)
             patched[rows, positions] = torch.lerp(
                 patched[rows, positions], clean_state[positions], patch_strength
             )
             control_rows = rows + seq_len
             patched[control_rows, positions] = torch.lerp(
-                patched[control_rows, positions], clean_state[source_positions], patch_strength
+                patched[control_rows, positions], control_state[positions], patch_strength
             )
             return (patched, *output[1:]) if isinstance(output, tuple) else patched
 
@@ -303,13 +311,14 @@ def run_real_model_lab(model, tokenizer, device, patch_strength=1.0):
             handle.remove()
         margins = logits[:, clean_id] - logits[:, corrupt_id] - corrupt_margin
         relevant[layer_idx] = margins[:seq_len].float().cpu()
-        shuffled[layer_idx] = margins[seq_len:].float().cpu()
+        irrelevant[layer_idx] = margins[seq_len:].float().cpu()
 
     best = torch.nonzero(relevant == relevant.max(), as_tuple=False)[0]
     return {
         "model": model.config._name_or_path,
         "clean_prompt": clean_prompt,
         "corrupt_prompt": corrupt_prompt,
+        "control_prompt": control_prompt,
         "clean_answer": clean_answer.strip(),
         "corrupt_answer": corrupt_answer.strip(),
         "tokens": [tokenizer.decode([token]) for token in corrupt["input_ids"][0].tolist()],
@@ -321,9 +330,9 @@ def run_real_model_lab(model, tokenizer, device, patch_strength=1.0):
         "best_layer": int(best[0]),
         "best_token_index": int(best[1]),
         "best_logit_delta": float(relevant.max()),
-        "control_at_best": float(shuffled[best[0], best[1]]),
+        "control_at_best": float(irrelevant[best[0], best[1]]),
         "relevant_heatmap": relevant.tolist(),
-        "shuffled_heatmap": shuffled.tolist(),
+        "irrelevant_heatmap": irrelevant.tolist(),
     }
 
 
