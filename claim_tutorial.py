@@ -168,13 +168,6 @@ def _(mo, pd):
         Major substitutions are Qwen-2.5-0.5B for 1.5B, 24 synthetic chains for 1,000 STaRK-Prime facts, 12 patch scans for 1,000 evaluations, and teacher-forced exact-token scoring for reported generated exact match. The released anonymous archive omitted its datasets, configuration files, and trained checkpoints, preventing an exact archival rerun.
         """),
         mo.ui.table(provenance, selection=None, pagination=False),
-        mo.accordion({"Internal run references": mo.md("""
-        These IDs are local orchestration references, not public evidence links:
-
-        - zero-shot control: `21a46750-e345-4f51-b09d-6168d514b5ac`
-        - confirmatory reproduction: `b77b5ff4-0c04-421b-aff6-a14607a64446`
-        - toy lab validation: `2c549be7-904a-46e2-9cab-c1ec372ec894`
-        """)}),
     ])
     return (provenance,)
 

@@ -20,10 +20,3 @@ Each row links to an immutable experiment branch containing the runner, fixed co
 | [Synthetic entity self-patching](https://github.com/rehaanahmad2013/towards-mechanistically-understanding/tree/orx/synthetic-entity-self-patching) | Trained the LoRA adapter and attempted the first entity-position activation scan. | Training converged, but analysis stopped when isolated and in-context tokenization used different entity anchors. This motivated a context-aware anchor rather than yielding a patching metric. |
 | [Context-aware entity self-patching](https://github.com/rehaanahmad2013/towards-mechanistically-understanding/tree/orx/context-aware-entity-self-patching) | Recomputed entity anchors in context and ran the full 24×24 residual-stream patch scan with a random-position oracle control. | **Partially reproduced:** 48/48 fact recall, 0/24 natural two-hop answers, and 3/12 patched recoveries versus 1/12 for the control. The paper's middle-layer localization did not reproduce. RTX PRO 6000, 273.38 s (about 0.0759 GPU-hours). |
 | [Molab toy GPU lab](https://github.com/rehaanahmad2013/towards-mechanistically-understanding/tree/orx/molab-toy-gpu-lab-validation) | Validated the notebook's bounded synthetic intervention demo on the target GPU class. | Teaching-only—not reproduction evidence. The relevant intervention raised accuracy from 0.5322 to 0.8660 while the shuffled control ended at 0.5200. RTX PRO 6000, 0.323 s. |
-
-<details>
-<summary>Internal run references</summary>
-
-These IDs identify the corresponding managed `orx` runs: baseline `fd5fb806-279a-46ce-b1fd-d1655ebfe8df`; Kubernetes compatibility `4e71c53d-028c-4379-a3f3-419f570f15fa`; zero-shot control `21a46750-e345-4f51-b09d-6168d514b5ac`; first entity scan `7ccdf903-44ed-4ad6-85d7-e6a8cd7313ae`; confirmatory reproduction `b77b5ff4-0c04-421b-aff6-a14607a64446`; GPU lab validation `2c549be7-904a-46e2-9cab-c1ec372ec894`.
-
-</details>
