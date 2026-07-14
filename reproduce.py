@@ -249,7 +249,7 @@ def run_real_model_lab(model, tokenizer, device, patch_strength=1.0):
     """Batched layer-by-token residual patching used by the Molab GPU lab."""
     clean_prompt = "A is in Paris. Paris is in France. Therefore, A is in"
     corrupt_prompt = "A is in Berlin. Berlin is in Germany. Therefore, A is in"
-    control_prompt = "A is in Tokyo. Tokyo is in Japan. Therefore, A is in"
+    control_prompt = "A is in Munich. Munich is in Germany. Therefore, A is in"
     clean_answer, corrupt_answer = " France", " Germany"
     clean = tokenizer(clean_prompt, return_tensors="pt").to(device)
     corrupt = tokenizer(corrupt_prompt, return_tensors="pt").to(device)
@@ -283,7 +283,7 @@ def run_real_model_lab(model, tokenizer, device, patch_strength=1.0):
     corrupt_margin = (corrupt_logits[0, clean_id] - corrupt_logits[0, corrupt_id]).item()
 
     relevant = torch.empty((len(layers), seq_len), dtype=torch.float32)
-    irrelevant = torch.empty_like(relevant)
+    answer_matched = torch.empty_like(relevant)
     positions = torch.arange(seq_len, device=device)
     for layer_idx, layer in enumerate(layers):
         batch_ids = corrupt["input_ids"].repeat(2 * seq_len, 1)
@@ -311,7 +311,7 @@ def run_real_model_lab(model, tokenizer, device, patch_strength=1.0):
             handle.remove()
         margins = logits[:, clean_id] - logits[:, corrupt_id] - corrupt_margin
         relevant[layer_idx] = margins[:seq_len].float().cpu()
-        irrelevant[layer_idx] = margins[seq_len:].float().cpu()
+        answer_matched[layer_idx] = margins[seq_len:].float().cpu()
 
     best = torch.nonzero(relevant == relevant.max(), as_tuple=False)[0]
     return {
@@ -330,9 +330,9 @@ def run_real_model_lab(model, tokenizer, device, patch_strength=1.0):
         "best_layer": int(best[0]),
         "best_token_index": int(best[1]),
         "best_logit_delta": float(relevant.max()),
-        "control_at_best": float(irrelevant[best[0], best[1]]),
+        "control_at_best": float(answer_matched[best[0], best[1]]),
         "relevant_heatmap": relevant.tolist(),
-        "irrelevant_heatmap": irrelevant.tolist(),
+        "answer_matched_heatmap": answer_matched.tolist(),
     }
 
 
