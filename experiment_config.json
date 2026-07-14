@@ -1,7 +1,8 @@
 {
-  "mode": "gpu_lab_validation",
+  "mode": "real_model_gpu_lab_validation",
   "model": "Qwen/Qwen2.5-0.5B-Instruct",
   "seed": 42,
+  "patch_strength": 1.0,
   "num_chains": 24,
   "scan_samples": 12,
   "epochs": 30,

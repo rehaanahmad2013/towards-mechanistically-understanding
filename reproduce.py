@@ -244,21 +244,87 @@ def evaluate(model, tokenizer, chains, device, scan_samples, do_scan):
     return result
 
 
-def run_toy_lab(device, signal_strength=1.5, samples=4096, seed=7):
-    """Bounded synthetic analogue used by the notebook's optional GPU lab."""
-    generator = torch.Generator(device=device).manual_seed(seed)
-    labels = torch.randint(0, 2, (samples,), generator=generator, device=device) * 2 - 1
-    source = torch.randn(samples, generator=generator, device=device) + signal_strength * labels
-    stranded = torch.randn(samples, generator=generator, device=device) + 0.10 * labels
-    shuffled = source[torch.randperm(samples, generator=generator, device=device)]
-    strengths = torch.linspace(0, 1, 11, device=device)
-    patched_accuracy, control_accuracy = [], []
-    for alpha in strengths:
-        patched_accuracy.append(((stranded + alpha * source).sign() == labels).float().mean().item())
-        control_accuracy.append(((stranded + alpha * shuffled).sign() == labels).float().mean().item())
-    return {"strengths": strengths.cpu().tolist(), "patched_accuracy": patched_accuracy,
-            "shuffled_control_accuracy": control_accuracy, "samples": samples,
-            "signal_strength": signal_strength, "seed": seed}
+@torch.inference_mode()
+def run_real_model_lab(model, tokenizer, device, patch_strength=1.0):
+    """Batched layer-by-token residual patching used by the Molab GPU lab."""
+    clean_prompt = "A is in Paris. Paris is in France. Therefore, A is in"
+    corrupt_prompt = "A is in Berlin. Berlin is in Germany. Therefore, A is in"
+    clean_answer, corrupt_answer = " France", " Germany"
+    clean = tokenizer(clean_prompt, return_tensors="pt").to(device)
+    corrupt = tokenizer(corrupt_prompt, return_tensors="pt").to(device)
+    if clean["input_ids"].shape != corrupt["input_ids"].shape:
+        raise ValueError("The controlled prompts must have identical token lengths")
+    seq_len = clean["input_ids"].shape[1]
+    clean_id = tokenizer(clean_answer, add_special_tokens=False)["input_ids"][0]
+    corrupt_id = tokenizer(corrupt_answer, add_special_tokens=False)["input_ids"][0]
+    layers = model.model.layers
+    cache = {}
+    handles = []
+    for layer_idx, layer in enumerate(layers):
+        def save(_module, _inputs, output, layer_idx=layer_idx):
+            hidden = output[0] if isinstance(output, tuple) else output
+            cache[layer_idx] = hidden.detach().clone()
+        handles.append(layer.register_forward_hook(save))
+    try:
+        clean_logits = model(**clean, use_cache=False).logits[:, -1, :]
+    finally:
+        for handle in handles:
+            handle.remove()
+    corrupt_logits = model(**corrupt, use_cache=False).logits[:, -1, :]
+    clean_margin = (clean_logits[0, clean_id] - clean_logits[0, corrupt_id]).item()
+    corrupt_margin = (corrupt_logits[0, clean_id] - corrupt_logits[0, corrupt_id]).item()
+
+    relevant = torch.empty((len(layers), seq_len), dtype=torch.float32)
+    shuffled = torch.empty_like(relevant)
+    positions = torch.arange(seq_len, device=device)
+    source_positions = torch.roll(positions, shifts=max(1, seq_len // 2))
+    for layer_idx, layer in enumerate(layers):
+        batch_ids = corrupt["input_ids"].repeat(2 * seq_len, 1)
+        batch_mask = corrupt["attention_mask"].repeat(2 * seq_len, 1)
+
+        def patch(_module, _inputs, output, layer_idx=layer_idx):
+            hidden = output[0] if isinstance(output, tuple) else output
+            patched = hidden.clone()
+            clean_state = cache[layer_idx][0].to(patched.dtype)
+            rows = torch.arange(seq_len, device=patched.device)
+            patched[rows, positions] = torch.lerp(
+                patched[rows, positions], clean_state[positions], patch_strength
+            )
+            control_rows = rows + seq_len
+            patched[control_rows, positions] = torch.lerp(
+                patched[control_rows, positions], clean_state[source_positions], patch_strength
+            )
+            return (patched, *output[1:]) if isinstance(output, tuple) else patched
+
+        handle = layer.register_forward_hook(patch)
+        try:
+            logits = model(input_ids=batch_ids, attention_mask=batch_mask, use_cache=False).logits[:, -1, :]
+        finally:
+            handle.remove()
+        margins = logits[:, clean_id] - logits[:, corrupt_id] - corrupt_margin
+        relevant[layer_idx] = margins[:seq_len].float().cpu()
+        shuffled[layer_idx] = margins[seq_len:].float().cpu()
+
+    best = torch.nonzero(relevant == relevant.max(), as_tuple=False)[0]
+    return {
+        "model": model.config._name_or_path,
+        "clean_prompt": clean_prompt,
+        "corrupt_prompt": corrupt_prompt,
+        "clean_answer": clean_answer.strip(),
+        "corrupt_answer": corrupt_answer.strip(),
+        "tokens": [tokenizer.decode([token]) for token in corrupt["input_ids"][0].tolist()],
+        "layers": len(layers),
+        "sequence_tokens": seq_len,
+        "patch_strength": patch_strength,
+        "clean_margin": clean_margin,
+        "corrupt_margin": corrupt_margin,
+        "best_layer": int(best[0]),
+        "best_token_index": int(best[1]),
+        "best_logit_delta": float(relevant.max()),
+        "control_at_best": float(shuffled[best[0], best[1]]),
+        "relevant_heatmap": relevant.tolist(),
+        "shuffled_heatmap": shuffled.tolist(),
+    }
 
 
 def main():
@@ -268,8 +334,16 @@ def main():
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(json.dumps({"event": "environment", "device": str(device), "gpu": torch.cuda.get_device_name(0) if device.type == "cuda" else None,
                       "torch": torch.__version__, "config": config}), flush=True)
-    if config["mode"] == "gpu_lab_validation":
-        result = run_toy_lab(device)
+    if config["mode"] == "real_model_gpu_lab_validation":
+        tokenizer = AutoTokenizer.from_pretrained(config["model"], trust_remote_code=True)
+        model = AutoModelForCausalLM.from_pretrained(
+            config["model"],
+            torch_dtype=torch.bfloat16 if device.type == "cuda" else torch.float32,
+            trust_remote_code=True,
+        ).to(device).eval()
+        scan_started = time.time()
+        result = run_real_model_lab(model, tokenizer, device, config["patch_strength"])
+        result["scan_runtime_seconds"] = time.time() - scan_started
         result.update({"event": "final_result", "mode": config["mode"], "device": str(device),
                        "gpu": torch.cuda.get_device_name(0) if device.type == "cuda" else None,
                        "runtime_seconds": time.time()-started})
