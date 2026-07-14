@@ -154,7 +154,7 @@ def _(mo, pd):
     provenance = pd.DataFrame([
         {"Experiment": "Zero-shot novelty control", "Code": "[Frozen branch](https://github.com/rehaanahmad2013/towards-mechanistically-understanding/tree/orx/blackwell-zero-shot-control-2)", "Verdict": "0/48 direct; novel", "Compute": "1× RTX PRO 6000, 7.66 s"},
         {"Experiment": "Confirmatory self-patching", "Code": "[Runner + config + manifest](https://github.com/rehaanahmad2013/towards-mechanistically-understanding/tree/orx/context-aware-entity-self-patching)", "Verdict": "Partially reproduced", "Compute": "1× RTX PRO 6000, 273.38 s"},
-        {"Experiment": "Real-model GPU lab", "Code": "[Qwen heatmap branch](https://github.com/rehaanahmad2013/towards-mechanistically-understanding/tree/orx/irrelevant-source-activation-heatmap)", "Verdict": "Teaching-only validated", "Compute": "1× RTX PRO 6000, 6.88 s total"},
+        {"Experiment": "Real-model GPU lab validation", "Code": "[Answer-matched heatmap branch](https://github.com/rehaanahmad2013/towards-mechanistically-understanding/tree/orx/answer-matched-activation-heatmap)", "Verdict": "Teaching-only validated", "Compute": "1× RTX PRO 6000, 6.09 s including model load"},
     ])
     mo.vstack([
         mo.md("""
@@ -162,7 +162,7 @@ def _(mo, pd):
 
         - [Zero-shot control code](https://github.com/rehaanahmad2013/towards-mechanistically-understanding/tree/orx/blackwell-zero-shot-control-2) contains the runner, fixed baseline configuration, Blackwell-compatible manifest, and novelty evaluation.
         - [Confirmatory reproduction code](https://github.com/rehaanahmad2013/towards-mechanistically-understanding/tree/orx/context-aware-entity-self-patching) contains LoRA training, the fixed synthetic mappings, full 24×24 scan, random-position control, and exact-token scorer.
-        - [Real-model GPU lab code](https://github.com/rehaanahmad2013/towards-mechanistically-understanding/tree/orx/irrelevant-source-activation-heatmap) contains the Qwen2.5-0.5B residual-patching sweep, fixed prompts, aligned irrelevant-source control, and Blackwell manifest used below.
+        - [Real-model GPU lab validation code](https://github.com/rehaanahmad2013/towards-mechanistically-understanding/tree/orx/answer-matched-activation-heatmap) contains the bounded Qwen layer-by-token intervention and answer-matched control used below.
 
         The reproduction used 0.0759 measured GPU-hours. This was a user-owned Kubernetes cluster, so no provider price or monetary charge was exposed; dollar cost is therefore **not available**, rather than assumed to be zero.
 
@@ -176,198 +176,193 @@ def _(mo, pd):
 @app.cell
 def _(mo):
     mo.md("""
-    ## 6. Optional GPU lab — real Qwen activation surgery
+    ## 6. Optional GPU lab — real Qwen residual-stream surgery
 
-    This teaching lab uses the attached GPU for genuine transformer intervention work. It loads **Qwen2.5-0.5B-Instruct**, caches every residual-post state for a clean two-hop prompt, and patches each layer × token location into a corrupted prompt. The score is the change in the next-token logit margin for **France over Germany**.
+    This is a genuine transformer intervention on **Qwen2.5-0.5B-Instruct**, not a synthetic tensor demo. The corrupted prompt says `Berlin → Germany`; the clean source says `Paris → France`. At every one of 24 residual layers and every prompt-token position, the lab copies one clean activation into the corrupted forward pass and measures the change in the next-token **France-vs-Germany logit margin**.
 
-    The negative control repeats the same intervention with aligned states from an unrelated **Tokyo → Japan** chain. This is still a teaching experiment—not reproduction evidence—but it uses a real model, real hidden states, and a causal 24-layer sweep. The frozen heatmap below came from the validated RTX PRO 6000 run, so the result is visible before you download anything.
+    The negative control follows a different route, `Munich → Germany`, while preserving the corrupted answer. Subtracting that answer-matched control isolates France-specific information from generic disruption. This remains a teaching experiment—not reproduction evidence—because it uses in-context facts rather than the LoRA-tuned model above.
     """)
     return
 
 
 @app.cell
 def _(mo, np, plt):
-    frozen_tokens = ["A", " is", " in", " Berlin", ".", " Berlin", " is", " in", " Germany", ".", " Therefore", ",", " A", " is", " in"]
-    frozen_heatmap = np.array([
-        [0, .06, .12, 6.19, 0, 7.56, .06, .12, 16.12, .06, .06, .12, .12, .12, .12],
-        [.12, 0, .06, 6.31, 0, 7.31, .06, 0, 16, .12, .12, .06, .12, .12, .19],
-        [0, .06, .12, 6.31, -.06, 7.19, 0, 0, 16.12, .06, .25, 0, .19, .12, .06],
-        [0, .06, .06, 4.94, -.12, 4.06, .19, .06, 16, .06, .12, .19, .06, .12, .12],
-        [.06, .06, .06, 5.19, -.38, 4, .06, -.06, 16.25, .31, .38, .19, .12, .12, .19],
-        [.12, .12, .06, 5.31, -.44, 3.81, .06, .12, 16.25, .12, .38, .12, .19, .12, .12],
-        [.12, .12, .12, 5.56, -.44, 3.19, .19, .25, 16.25, -.06, .38, .19, .12, .12, .06],
-        [.12, .12, .06, 5.69, -.38, 2.88, .06, .19, 16.62, .12, .44, .19, .12, .19, .06],
-        [.12, .06, .12, 5.56, .12, 2.75, .19, 0, 16.38, .12, .44, .19, .12, .12, .06],
-        [.06, .19, .06, 5.81, -.19, 1.12, .19, 0, 16.25, .12, .5, .12, .12, .12, .06],
-        [.12, .12, .12, 5.69, -.19, 1.25, .19, -.12, 16.5, .12, .38, .19, .12, .12, .25],
-        [.12, .12, .06, 5.69, -.19, 1.44, .06, -.12, 16.5, .19, .38, .31, .25, .25, .31],
-        [.06, .06, .12, 5.81, .06, 1.5, 0, -.12, 16.75, .06, .12, .19, .19, .12, .12],
-        [.12, .12, .12, 5.81, 0, .88, .12, 0, 17, .19, .19, .12, 0, .19, .25],
-        [.06, .12, .12, 5.94, .06, 1, .12, 0, 16.88, .06, .19, .12, 0, .12, 0],
-        [.12, .12, .12, 5.81, .12, .94, .12, 0, 16.5, .12, .12, .12, .19, .12, -.19],
-        [.19, .12, .12, 5.94, .19, 1.06, .12, 0, 14.94, .12, .25, .12, .12, .12, 2.25],
-        [.12, .12, .12, 5.81, .12, 1, .12, .12, 14.81, .19, .12, .12, .12, .19, 2.56],
-        [.12, .19, .19, 5.69, .12, .94, .19, .06, 14.69, .06, .12, .12, .12, 0, 2.62],
-        [.12, .12, .19, 5.81, .19, 1, .12, .12, 15.06, .06, .19, .12, .19, .12, 2.44],
-        [.19, .12, .12, 5.31, .12, .88, .19, .12, 6.94, .12, .12, .19, .19, .12, 10.06],
-        [.19, .12, .12, .88, .19, .19, .19, .06, 1.25, .12, .19, .19, .12, .19, 19.62],
-        [.19, .12, .12, .44, .19, .19, .19, .19, -1.38, .12, .12, .19, .12, .12, 22.75],
-        [.12, .12, .12, .12, .12, .12, .12, .12, .12, .12, .12, .12, .12, .12, 22],
+    _validated_tokens = ["A", "is", "in", "Berlin", ".", "Berlin", "is", "in", "Germany", ".", "Therefore", ",", "A", "is", "in"]
+    _validated_delta = np.array([
+        [0, 0, 0, 5.25, -0.125, 5.875, -0.125, 0.0625, 16.125, 0, -0.0625, -0.0625, 0, 0, -0.0625],
+        [0, 0, 0, 5.125, 0.125, 5.6875, 0, -0.0625, 15.875, 0, -0.0625, -0.0625, 0.0625, 0.0625, 0.125],
+        [0, 0, 0, 5.0625, -0.0625, 5.5, -0.125, -0.0625, 16, -0.0625, 0.0625, -0.1875, 0.0625, 0, -0.0625],
+        [0, 0, 0, 4.6875, -0.125, 3.6875, 0.125, -0.0625, 15.9375, 0, -0.125, 0, 0, 0.0625, -0.0625],
+        [0, 0, 0, 5.125, -0.625, 3.5625, 0, -0.125, 15.875, 0.1875, 0.0625, 0.125, -0.0625, 0.0625, 0],
+        [0, 0, 0, 5.25, -0.75, 3.4375, 0, -0.1875, 15.9375, -0.0625, 0.125, 0, 0.125, 0.0625, -0.125],
+        [0, 0, 0, 5.3125, -0.5625, 2.6875, 0.0625, 0, 16.1875, -0.1875, 0.1875, 0.1875, 0.125, -0.0625, -0.1875],
+        [0, 0, 0, 5.625, -0.6875, 2.5, 0, 0.0625, 16.4375, 0.1875, 0.25, 0.1875, 0, 0, -0.0625],
+        [0, 0, 0, 5.8125, -0.4375, 2.25, 0.0625, -0.0625, 16.1875, 0.1875, 0.125, 0.125, 0.0625, 0.0625, -0.0625],
+        [0, 0, 0, 5.8125, -0.4375, 1, 0.0625, 0, 15.875, 0.1875, 0.1875, 0.0625, 0, 0.0625, 0],
+        [0, 0, 0, 5.6875, -0.3125, 1.125, -0.0625, -0.0625, 16.1875, 0.25, 0.3125, 0, -0.125, -0.0625, 0.25],
+        [0, 0, 0, 5.75, -0.5625, 1.25, -0.0625, -0.125, 16.1875, 0.1875, 0.1875, 0.125, 0.0625, 0.0625, 0.3125],
+        [0, 0, 0, 5.8125, -0.125, 1.375, -0.125, -0.1875, 16.3125, 0, 0.0625, 0.0625, -0.0625, 0.125, 0.25],
+        [0, 0, 0, 5.875, -0.1875, 0.6875, 0.0625, -0.1875, 16.6875, 0.0625, 0.0625, 0.0625, -0.1875, 0.125, 0.5625],
+        [0, 0, 0, 5.875, -0.125, 0.8125, 0, -0.1875, 16.4375, -0.0625, 0.125, 0.125, -0.1875, 0.125, 0.125],
+        [0, 0, 0, 5.875, 0, 0.75, 0, -0.125, 16.1875, 0, 0, 0, 0.0625, 0.0625, 0],
+        [0, 0, 0, 5.9375, 0, 0.875, 0, -0.0625, 14.6875, -0.0625, 0.125, -0.125, 0, 0.0625, 2.3125],
+        [0, 0, 0, 5.75, 0, 0.8125, 0, 0, 14.5, 0, 0, 0, 0, 0.0625, 2.75],
+        [0, 0, 0, 5.6875, 0, 0.75, 0, -0.0625, 14.4375, -0.0625, 0, 0, 0, -0.0625, 2.75],
+        [0, 0, 0, 5.75, 0.0625, 0.75, 0, 0, 14.8125, -0.0625, 0.0625, -0.0625, 0, 0, 2.5625],
+        [0, 0, 0, 5.25, 0, 0.625, 0.0625, 0, 6.75, 0, 0, 0, 0.0625, 0, 10.3125],
+        [0, 0, 0, 0.6875, 0.0625, 0, 0.0625, -0.125, 1.25, -0.0625, 0.0625, 0.0625, 0, 0, 19.9375],
+        [0, 0, 0, 0.125, 0, 0, 0.0625, 0, -1.3125, -0.0625, 0, 0.0625, 0, -0.0625, 23],
+        [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 22.0625],
     ])
-    _frozen_limit = float(np.abs(frozen_heatmap).max())
-    _frozen_fig, _frozen_ax = plt.subplots(figsize=(10.8, 5.4))
-    _frozen_image = _frozen_ax.imshow(frozen_heatmap, aspect="auto", origin="lower", cmap="RdBu_r", vmin=-_frozen_limit, vmax=_frozen_limit)
-    _frozen_ax.set(title="Validated aligned-source patch: where does France information change the answer?", xlabel="Token position in the corrupted Germany prompt", ylabel="Patched residual layer")
-    _frozen_ax.set_xticks(range(len(frozen_tokens)), [f"{i}:{token.replace(' ', '·')}" for i, token in enumerate(frozen_tokens)], rotation=55, ha="right")
+    _frozen_fig, _frozen_ax = plt.subplots(figsize=(10.5, 5.8))
+    _frozen_image = _frozen_ax.imshow(_validated_delta, aspect="auto", cmap="coolwarm", vmin=-23, vmax=23, origin="lower")
+    _frozen_ax.scatter([14], [22], marker="s", facecolors="none", edgecolors="black", linewidths=1.8, s=120)
+    _frozen_ax.set(
+        xlabel="Corrupted-prompt token position",
+        ylabel="Residual-post layer",
+        title="Where the France-specific state changes Qwen's answer margin",
+    )
+    _frozen_ax.set_xticks(range(len(_validated_tokens)), [f"{i} · {token}" for i, token in enumerate(_validated_tokens)], rotation=55, ha="right")
     _frozen_ax.set_yticks([0, 4, 8, 12, 16, 20, 23])
-    _frozen_fig.colorbar(_frozen_image, ax=_frozen_ax, label="Δ logit margin: France − Germany")
+    _frozen_colorbar = _frozen_fig.colorbar(_frozen_image, ax=_frozen_ax, pad=0.02)
+    _frozen_colorbar.set_label("Relevant patch − answer-matched control (logit Δ)")
     _frozen_fig.tight_layout()
     mo.vstack([
+        mo.callout("Frozen RTX PRO 6000 validation: the strongest clean-specific effect is +23.0 logits at layer 22 and the final `in` token. A second ridge at the `Germany` token shows the answer identity propagating through many layers.", kind="info"),
         _frozen_fig,
-        mo.callout("The strongest aligned patch is layer 22 at the final prompt token: +22.75 logit-margin units. The aligned irrelevant-source control is +12.50 there. Vertical bands reveal where Paris/France states influence the downstream answer.", kind="info"),
+        mo.md("**How to read it.** Rows are intervention layers; columns are token positions in the corrupted prompt. Warm cells mean the Paris→France state helps more than the answer-matched Munich→Germany control. The black square marks the maximum. Values are embedded from the validated external run, so the result is visible before downloading a model."),
     ])
-    return frozen_heatmap, frozen_tokens
+    return
 
 
 @app.cell
 def _(mo):
-    patch_strength = mo.ui.slider(0.25, 1.5, step=0.25, value=1.0, label="Patch strength")
-    run_lab = mo.ui.run_button(label="Run Qwen layer × token sweep")
-    mo.hstack([patch_strength, run_lab], justify="start", gap=2)
+    patch_strength = mo.ui.slider(0.25, 1.5, step=0.25, value=1.0, label="Patch strength α")
+    run_lab = mo.ui.run_button(label="Run real-Qwen heatmap")
+    mo.vstack([
+        mo.md("Choose how strongly to mix the source activation into the corrupted stream, then run the full sweep. The first run downloads and caches Qwen2.5-0.5B; the validated RTX path took 6.1 seconds including model load and 0.68 seconds for the paired scan."),
+        mo.hstack([patch_strength, run_lab], justify="start", gap=2),
+    ])
     return patch_strength, run_lab
 
 
 @app.cell
-def _():
-    import functools
-    import time
-
-    @functools.cache
-    def _load_qwen(_device_name):
-        import torch
-        from transformers import AutoModelForCausalLM, AutoTokenizer
-
-        _model_name = "Qwen/Qwen2.5-0.5B-Instruct"
-        _device = torch.device(_device_name)
-        _tokenizer = AutoTokenizer.from_pretrained(_model_name, trust_remote_code=True)
-        _model = AutoModelForCausalLM.from_pretrained(
-            _model_name,
-            torch_dtype=torch.bfloat16 if _device.type == "cuda" else torch.float32,
-            trust_remote_code=True,
-        ).to(_device).eval()
-        return _model, _tokenizer, _device
-
-    def run_qwen_heatmap(strength):
-        import torch
-
-        _started = time.perf_counter()
-        _device_name = "cuda" if torch.cuda.is_available() else "cpu"
-        _model, _tokenizer, _device = _load_qwen(_device_name)
-        _clean_prompt = "A is in Paris. Paris is in France. Therefore, A is in"
-        _corrupt_prompt = "A is in Berlin. Berlin is in Germany. Therefore, A is in"
-        _control_prompt = "A is in Tokyo. Tokyo is in Japan. Therefore, A is in"
-        _clean = _tokenizer(_clean_prompt, return_tensors="pt").to(_device)
-        _corrupt = _tokenizer(_corrupt_prompt, return_tensors="pt").to(_device)
-        _control = _tokenizer(_control_prompt, return_tensors="pt").to(_device)
-        if not (_clean["input_ids"].shape == _corrupt["input_ids"].shape == _control["input_ids"].shape):
-            raise ValueError("Controlled prompts no longer have aligned token lengths")
-        _clean_id = _tokenizer(" France", add_special_tokens=False)["input_ids"][0]
-        _corrupt_id = _tokenizer(" Germany", add_special_tokens=False)["input_ids"][0]
-        _layers = _model.model.layers
-        _layer_indices = list(range(len(_layers))) if _device.type == "cuda" else list(range(0, len(_layers), 4))
-
-        @torch.inference_mode()
-        def _forward_with_cache(_inputs):
-            _cache, _handles = {}, []
-            for _layer_idx in _layer_indices:
-                def _save(_module, _module_inputs, _output, _layer_idx=_layer_idx):
-                    _hidden = _output[0] if isinstance(_output, tuple) else _output
-                    _cache[_layer_idx] = _hidden.detach().clone()
-                _handles.append(_layers[_layer_idx].register_forward_hook(_save))
-            try:
-                _logits = _model(**_inputs, use_cache=False).logits[:, -1, :]
-            finally:
-                for _handle in _handles:
-                    _handle.remove()
-            return _logits, _cache
-
-        with torch.inference_mode():
-            _clean_logits, _clean_cache = _forward_with_cache(_clean)
-            _, _control_cache = _forward_with_cache(_control)
-            _corrupt_logits = _model(**_corrupt, use_cache=False).logits[:, -1, :]
-            _clean_margin = (_clean_logits[0, _clean_id] - _clean_logits[0, _corrupt_id]).item()
-            _corrupt_margin = (_corrupt_logits[0, _clean_id] - _corrupt_logits[0, _corrupt_id]).item()
-            _seq_len = _corrupt["input_ids"].shape[1]
-            _positions = torch.arange(_seq_len, device=_device)
-            _relevant = torch.empty((len(_layer_indices), _seq_len), dtype=torch.float32)
-            _irrelevant = torch.empty_like(_relevant)
-            for _row, _layer_idx in enumerate(_layer_indices):
-                _batch_ids = _corrupt["input_ids"].repeat(2 * _seq_len, 1)
-                _batch_mask = _corrupt["attention_mask"].repeat(2 * _seq_len, 1)
-
-                def _patch(_module, _module_inputs, _output, _layer_idx=_layer_idx):
-                    _hidden = _output[0] if isinstance(_output, tuple) else _output
-                    _patched = _hidden.clone()
-                    _rows = torch.arange(_seq_len, device=_device)
-                    _clean_state = _clean_cache[_layer_idx][0].to(_patched.dtype)
-                    _control_state = _control_cache[_layer_idx][0].to(_patched.dtype)
-                    _patched[_rows, _positions] = torch.lerp(_patched[_rows, _positions], _clean_state[_positions], float(strength))
-                    _control_rows = _rows + _seq_len
-                    _patched[_control_rows, _positions] = torch.lerp(_patched[_control_rows, _positions], _control_state[_positions], float(strength))
-                    return (_patched, *_output[1:]) if isinstance(_output, tuple) else _patched
-
-                _handle = _layers[_layer_idx].register_forward_hook(_patch)
-                try:
-                    _logits = _model(input_ids=_batch_ids, attention_mask=_batch_mask, use_cache=False).logits[:, -1, :]
-                finally:
-                    _handle.remove()
-                _margins = _logits[:, _clean_id] - _logits[:, _corrupt_id] - _corrupt_margin
-                _relevant[_row] = _margins[:_seq_len].float().cpu()
-                _irrelevant[_row] = _margins[_seq_len:].float().cpu()
-
-        return {
-            "tokens": [_tokenizer.decode([_token]) for _token in _corrupt["input_ids"][0].tolist()],
-            "layer_indices": _layer_indices,
-            "relevant": _relevant.tolist(),
-            "irrelevant": _irrelevant.tolist(),
-            "clean_margin": _clean_margin,
-            "corrupt_margin": _corrupt_margin,
-            "runtime": time.perf_counter() - _started,
-            "device": torch.cuda.get_device_name(0) if _device.type == "cuda" else "CPU fallback (every fourth layer)",
-        }
-
-    return (run_qwen_heatmap,)
-
-
-@app.cell
-def _(mo, np, patch_strength, plt, run_lab, run_qwen_heatmap):
+def _(mo, np, plt, run_lab, patch_strength):
     if not run_lab.value:
-        lab_output = mo.callout("The live lab is idle. Press the button to download/cache Qwen2.5-0.5B and run the intervention sweep. The first model download is about 1 GB; no expensive work starts automatically.", kind="neutral")
+        lab_output = mo.callout("The live model is idle. No model download or GPU work starts automatically.", kind="neutral")
     else:
         try:
-            _live = run_qwen_heatmap(float(patch_strength.value))
-            _relevant = np.asarray(_live["relevant"])
-            _irrelevant = np.asarray(_live["irrelevant"])
-            _limit = max(float(np.abs(_relevant).max()), float(np.abs(_irrelevant).max()), 1.0)
-            _live_fig, _live_axes = plt.subplots(1, 2, figsize=(12.4, 5.1), sharey=True)
-            for _axis, _matrix, _title in zip(_live_axes, [_relevant, _irrelevant], ["Aligned France source", "Aligned irrelevant Japan source"]):
-                _image = _axis.imshow(_matrix, aspect="auto", origin="lower", cmap="RdBu_r", vmin=-_limit, vmax=_limit)
-                _axis.set_title(_title)
-                _axis.set_xlabel("Corrupted-prompt token")
-                _axis.set_xticks(range(len(_live["tokens"])), [f"{i}:{token.replace(' ', '·')}" for i, token in enumerate(_live["tokens"])], rotation=55, ha="right")
-                _axis.set_yticks(range(len(_live["layer_indices"])), _live["layer_indices"])
-            _live_axes[0].set_ylabel("Patched residual layer")
-            _live_fig.colorbar(_image, ax=_live_axes, label="Δ logit margin: France − Germany", shrink=.86)
-            _live_fig.subplots_adjust(bottom=.27, wspace=.08, right=.88)
-            _best_row, _best_token = np.unravel_index(int(np.argmax(_relevant)), _relevant.shape)
-            _best_layer = _live["layer_indices"][_best_row]
+            import time
+            import torch
+            from transformers import AutoModelForCausalLM, AutoTokenizer
+
+            _lab_started = time.time()
+            _lab_device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+            _lab_dtype = torch.bfloat16 if _lab_device.type == "cuda" else torch.float32
+            _lab_model_id = "Qwen/Qwen2.5-0.5B-Instruct"
+            _lab_tokenizer = AutoTokenizer.from_pretrained(_lab_model_id, trust_remote_code=True)
+            _lab_model = AutoModelForCausalLM.from_pretrained(
+                _lab_model_id, torch_dtype=_lab_dtype, trust_remote_code=True
+            ).to(_lab_device).eval()
+            _lab_clean_prompt = "A is in Paris. Paris is in France. Therefore, A is in"
+            _lab_corrupt_prompt = "A is in Berlin. Berlin is in Germany. Therefore, A is in"
+            _lab_control_prompt = "A is in Munich. Munich is in Germany. Therefore, A is in"
+            _lab_clean = _lab_tokenizer(_lab_clean_prompt, return_tensors="pt").to(_lab_device)
+            _lab_corrupt = _lab_tokenizer(_lab_corrupt_prompt, return_tensors="pt").to(_lab_device)
+            _lab_control = _lab_tokenizer(_lab_control_prompt, return_tensors="pt").to(_lab_device)
+            if not (_lab_clean["input_ids"].shape == _lab_corrupt["input_ids"].shape == _lab_control["input_ids"].shape):
+                raise ValueError("Controlled prompts tokenized to different lengths")
+            _lab_clean_id = _lab_tokenizer(" France", add_special_tokens=False)["input_ids"][0]
+            _lab_corrupt_id = _lab_tokenizer(" Germany", add_special_tokens=False)["input_ids"][0]
+            _lab_layers = _lab_model.model.layers
+
+            def _lab_forward_with_cache(_lab_inputs):
+                _lab_cache = {}
+                _lab_handles = []
+                for _lab_idx, _lab_layer in enumerate(_lab_layers):
+                    def _lab_save(_module, _inputs, _output, _lab_idx=_lab_idx):
+                        _lab_hidden = _output[0] if isinstance(_output, tuple) else _output
+                        _lab_cache[_lab_idx] = _lab_hidden.detach().clone()
+                    _lab_handles.append(_lab_layer.register_forward_hook(_lab_save))
+                try:
+                    _lab_logits = _lab_model(**_lab_inputs, use_cache=False).logits[:, -1, :]
+                finally:
+                    for _lab_handle in _lab_handles:
+                        _lab_handle.remove()
+                return _lab_logits, _lab_cache
+
+            if _lab_device.type == "cuda":
+                torch.cuda.synchronize()
+            _lab_scan_started = time.time()
+            with torch.inference_mode():
+                _lab_clean_logits, _lab_clean_cache = _lab_forward_with_cache(_lab_clean)
+                _lab_control_logits, _lab_control_cache = _lab_forward_with_cache(_lab_control)
+                _lab_corrupt_logits = _lab_model(**_lab_corrupt, use_cache=False).logits[:, -1, :]
+                _lab_clean_margin = (_lab_clean_logits[0, _lab_clean_id] - _lab_clean_logits[0, _lab_corrupt_id]).item()
+                _lab_corrupt_margin = (_lab_corrupt_logits[0, _lab_clean_id] - _lab_corrupt_logits[0, _lab_corrupt_id]).item()
+                _lab_seq_len = _lab_corrupt["input_ids"].shape[1]
+                _lab_layer_indices = list(range(len(_lab_layers))) if _lab_device.type == "cuda" else list(range(0, len(_lab_layers), 4))
+                _lab_positions = torch.arange(_lab_seq_len, device=_lab_device)
+                _lab_relevant_rows, _lab_control_rows = [], []
+                for _lab_layer_idx in _lab_layer_indices:
+                    _lab_batch_ids = _lab_corrupt["input_ids"].repeat(2 * _lab_seq_len, 1)
+                    _lab_batch_mask = _lab_corrupt["attention_mask"].repeat(2 * _lab_seq_len, 1)
+
+                    def _lab_patch(_module, _inputs, _output, _lab_layer_idx=_lab_layer_idx):
+                        _lab_hidden = _output[0] if isinstance(_output, tuple) else _output
+                        _lab_patched = _lab_hidden.clone()
+                        _lab_rows = torch.arange(_lab_seq_len, device=_lab_device)
+                        _lab_clean_state = _lab_clean_cache[_lab_layer_idx][0].to(_lab_patched.dtype)
+                        _lab_control_state = _lab_control_cache[_lab_layer_idx][0].to(_lab_patched.dtype)
+                        _lab_alpha = float(patch_strength.value)
+                        _lab_patched[_lab_rows, _lab_positions] = torch.lerp(
+                            _lab_patched[_lab_rows, _lab_positions], _lab_clean_state[_lab_positions], _lab_alpha
+                        )
+                        _lab_control_batch_rows = _lab_rows + _lab_seq_len
+                        _lab_patched[_lab_control_batch_rows, _lab_positions] = torch.lerp(
+                            _lab_patched[_lab_control_batch_rows, _lab_positions], _lab_control_state[_lab_positions], _lab_alpha
+                        )
+                        return (_lab_patched, *_output[1:]) if isinstance(_output, tuple) else _lab_patched
+
+                    _lab_handle = _lab_layers[_lab_layer_idx].register_forward_hook(_lab_patch)
+                    try:
+                        _lab_logits = _lab_model(input_ids=_lab_batch_ids, attention_mask=_lab_batch_mask, use_cache=False).logits[:, -1, :]
+                    finally:
+                        _lab_handle.remove()
+                    _lab_margins = (_lab_logits[:, _lab_clean_id] - _lab_logits[:, _lab_corrupt_id] - _lab_corrupt_margin).float().cpu().numpy()
+                    _lab_relevant_rows.append(_lab_margins[:_lab_seq_len])
+                    _lab_control_rows.append(_lab_margins[_lab_seq_len:])
+            if _lab_device.type == "cuda":
+                torch.cuda.synchronize()
+            _lab_scan_seconds = time.time() - _lab_scan_started
+            _lab_difference = np.stack(_lab_relevant_rows) - np.stack(_lab_control_rows)
+            _lab_best_row, _lab_best_token = np.unravel_index(np.argmax(_lab_difference), _lab_difference.shape)
+            _lab_best_layer = _lab_layer_indices[_lab_best_row]
+            _lab_tokens = [_lab_tokenizer.decode([_token]).strip() or "·" for _token in _lab_corrupt["input_ids"][0].tolist()]
+            _lab_limit = max(1.0, float(np.abs(_lab_difference).max()))
+            _lab_fig, _lab_ax = plt.subplots(figsize=(10.5, 5.8))
+            _lab_image = _lab_ax.imshow(_lab_difference, aspect="auto", cmap="coolwarm", vmin=-_lab_limit, vmax=_lab_limit, origin="lower")
+            _lab_ax.scatter([_lab_best_token], [_lab_best_row], marker="s", facecolors="none", edgecolors="black", linewidths=1.8, s=120)
+            _lab_ax.set(xlabel="Corrupted-prompt token position", ylabel="Scanned residual-post layer", title=f"Live Qwen causal heatmap (α={float(patch_strength.value):.2f})")
+            _lab_ax.set_xticks(range(len(_lab_tokens)), [f"{i} · {token}" for i, token in enumerate(_lab_tokens)], rotation=55, ha="right")
+            _lab_ax.set_yticks(range(len(_lab_layer_indices)), _lab_layer_indices)
+            _lab_colorbar = _lab_fig.colorbar(_lab_image, ax=_lab_ax, pad=0.02)
+            _lab_colorbar.set_label("Relevant patch − answer-matched control (logit Δ)")
+            _lab_fig.tight_layout()
+            _lab_name = torch.cuda.get_device_name(0) if _lab_device.type == "cuda" else "CPU fallback (every fourth layer)"
+            _lab_total_seconds = time.time() - _lab_started
             lab_output = mo.vstack([
-                mo.callout(f"Device: {_live['device']}. Runtime: {_live['runtime']:.2f} s. Clean margin: {_live['clean_margin']:+.2f}; corrupted margin: {_live['corrupt_margin']:+.2f}. Best aligned patch: layer {_best_layer}, token {_best_token}, Δ={_relevant[_best_row, _best_token]:+.2f}; control there: {_irrelevant[_best_row, _best_token]:+.2f}.", kind="success"),
-                _live_fig,
-                mo.md("Red cells move the model toward **France**; blue cells move it toward **Germany**. Compare panels on the shared scale: a useful causal location should respond more to the relevant France-chain state than to an equally shaped but irrelevant Japan-chain state."),
+                mo.callout(
+                    f"Device: {_lab_name}. Clean margin: {_lab_clean_margin:+.2f}; corrupted margin: {_lab_corrupt_margin:+.2f}. Strongest specific effect: {_lab_difference[_lab_best_row, _lab_best_token]:+.2f} logits at layer {_lab_best_layer}, token {_lab_best_token} (`{_lab_tokens[_lab_best_token]}`). Scan: {_lab_scan_seconds:.2f} s; total: {_lab_total_seconds:.2f} s.",
+                    kind="success",
+                ),
+                _lab_fig,
             ])
-        except Exception as _error:
-            lab_output = mo.callout(f"The live sweep could not run: {_error}. The frozen RTX-validated heatmap and formal reproduction evidence remain available.", kind="warn")
+            del _lab_model
+            if _lab_device.type == "cuda":
+                torch.cuda.empty_cache()
+        except (ImportError, RuntimeError, ValueError, OSError) as _lab_error:
+            lab_output = mo.callout(f"The live scan could not run: {_lab_error}. The validated frozen heatmap above remains available.", kind="warn")
     lab_output
     return (lab_output,)
 
